@@ -1,0 +1,157 @@
+package com.hence4.hence.controllers;
+
+import com.hence4.hence.service.FileStorageService;
+import com.mongodb.MongoClient;
+import com.mongodb.ServerAddress;
+import com.mongodb.client.MongoCollection;
+import com.mongodb.client.MongoDatabase;
+import com.hence4.hence.models.Comments;
+//import com.hence4.hence.models.Entities;
+//import com.hence4.hence.models.UploadFileResponse;
+import com.hence4.hence.repositories.CommentRepository;
+//import com.hence4.hence.repositories.EntitiesRepository;
+
+import org.bson.Document;
+import org.bson.types.ObjectId;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+
+import org.springframework.core.io.Resource;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.web.multipart.MultipartFile;
+//import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+
+import java.io.IOException;
+
+import java.util.List;
+import java.util.Optional;
+
+
+import javax.servlet.http.HttpServletRequest;
+import javax.validation.Valid;
+import org.springframework.http.HttpStatus;
+
+@CrossOrigin( origins = "http://localhost:4200" )
+@RestController
+@RequestMapping(value = "/comments")
+
+
+public class CommentController {
+	
+	  @Autowired
+	    private CommentRepository repository;
+	  @RequestMapping(value = "", method = RequestMethod.GET)
+	    public List<Comments> getAllComments() {
+	        return repository.findAll();
+	        
+	   } 
+	  
+	  // this method will give us DB's length we need it in Chart
+	  
+	  @RequestMapping(value = "number", method = RequestMethod.GET)
+	    public long count() {
+	        return repository.count();
+	        
+	   }
+	  
+	  
+	  
+	  
+	  @RequestMapping(value = "/put/{id}", method = RequestMethod.GET)
+	    public Comments getCommentById(@PathVariable("id") String id) {
+	    	Optional<Comments> optional = repository.findById(id);
+	    	Comments comments = new Comments();
+	    	if (optional.isPresent()) {
+	    		comments = optional.get();
+	    	}else {
+	    		return null;
+	    	}
+	        return comments;
+	    }
+	  @RequestMapping(value = "/put/{id}", method = RequestMethod.PUT)
+	    public void updateCommentById(@PathVariable("id") ObjectId id, @Valid @RequestBody Comments comment) {
+		  comment.setId(id.toString());
+	        repository.save(comment);
+	    }
+	  
+	  @RequestMapping(value = "/post", method = RequestMethod.POST)
+	    public Comments addNewComment(@RequestBody Comments comment) {
+	    	System.err.println("yes it works!");
+	        comment.setId(ObjectId.get().toString());
+	        repository.save(comment);
+	        return comment;
+	    }
+	  @RequestMapping(value = "/{id}", method = RequestMethod.DELETE)
+	    public ResponseEntity<Object> deleteCommentByID(@PathVariable("id") String id) {
+	        return repository.findById(id)
+	              .map(comments -> {
+	              repository.deleteById(id);
+	              return ResponseEntity.ok().build();
+	              }).orElse(ResponseEntity.notFound().build());
+	        }  
+	  	
+	  
+	  @RequestMapping(value = "/remove", method = RequestMethod.DELETE)
+	    public void deleteComment() {
+			MongoClient mongoClient = new MongoClient(new ServerAddress("localhost", 27017));
+		    MongoDatabase db = mongoClient.getDatabase("Comm");
+		    MongoCollection<Document> collection1 = db.getCollection("comments");
+		    collection1.drop(); 
+		    MongoCollection<Document> collection2 = db.getCollection("entities");
+		    collection2.drop(); 
+	        }  
+	   
+
+	  
+	  
+	  private static final Logger logger = LoggerFactory.getLogger(CommentController.class);
+
+
+	    
+	    private FileStorageService fileStorageService;
+	    @Autowired
+		public CommentController(FileStorageService fileStorageService) {
+			this.fileStorageService = fileStorageService;
+		}
+	 
+		@PostMapping(value = "/files")
+		@ResponseStatus(HttpStatus.OK)
+		public void handleFileUpload(@RequestParam("file") MultipartFile file) throws IOException {
+			fileStorageService.storeFile(file);
+		}
+	    
+	    
+
+	    
+	    @GetMapping("/downloadFile/{fileName:.+}")
+	    public ResponseEntity<Resource> downloadFile(@PathVariable String fileName, HttpServletRequest request) {
+	        // Load file as Resource
+	        Resource resource = fileStorageService.loadFileAsResource(fileName);
+
+	        // Try to determine file's content type
+	        String contentType = null;
+	        try {
+	            contentType = request.getServletContext().getMimeType(resource.getFile().getAbsolutePath());
+	        } catch (IOException ex) {
+	            logger.info("Could not determine file type.");
+	        }
+
+	        // Fallback to the default content type if type could not be determined
+	        if(contentType == null) {
+	            contentType = "application/octet-stream";
+	        }
+
+	        return ResponseEntity.ok()
+	                .contentType(MediaType.parseMediaType(contentType))
+	                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + resource.getFilename() + "\"")
+	                .body(resource);
+	    }
+
+	  
+	  
+}
